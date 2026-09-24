@@ -1,5 +1,5 @@
+import { DisputeStatus } from '@/lib/contracts/types';
 import React from 'react';
-import { DisputeStatus } from '../../types/dispute';
 
 interface StatusChipProps {
   status: DisputeStatus;
@@ -7,25 +7,25 @@ interface StatusChipProps {
 
 export const StatusChip: React.FC<StatusChipProps> = ({ status }) => {
   const styles: Record<DisputeStatus, { label: string; dot: string; text: string; border: string }> = {
-    OPEN: {
+    open: {
       label: 'OPEN',
       dot: 'bg-[#0052FF]',
       text: 'text-[#D1D5DB]',
       border: 'border-[#24282D]',
     },
-    RESOLVED: {
+    resolved: {
       label: 'RESOLVED',
       dot: 'bg-[#10B981]',
       text: 'text-[#10B981]',
       border: 'border-[#10B981]/30',
     },
-    APPEALED: {
+    appealed: {
       label: 'APPEALED',
       dot: 'bg-[#A78BFA]',
       text: 'text-[#A78BFA]',
       border: 'border-[#A78BFA]/30',
     },
-    VOID: {
+    void: {
       label: 'VOID',
       dot: 'bg-[#F59E0B]',
       text: 'text-[#F59E0B]',
@@ -33,7 +33,7 @@ export const StatusChip: React.FC<StatusChipProps> = ({ status }) => {
     },
   };
 
-  const current = styles[status] || styles.OPEN;
+  const current = styles[status] || styles.open;
 
   return (
     <span

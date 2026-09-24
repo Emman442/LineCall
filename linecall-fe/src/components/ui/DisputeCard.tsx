@@ -4,7 +4,7 @@ import { ModeBadge } from './ModeBadge';
 import { StatusChip } from './StatusChip';
 import { VerdictPill } from './VerdictPill';
 import { ArrowRight, Clock, Video } from 'lucide-react';
-import { Dispute } from '@/lib/contracts/types';
+import { Dispute, DisputeMode, DisputeStatus } from '@/lib/contracts/types';
 
 interface DisputeCardProps {
   dispute: Dispute;
@@ -64,7 +64,7 @@ export const DisputeCard: React.FC<DisputeCardProps> = ({ dispute, onSelect }) =
               <Clock className="w-2.5 h-2.5 text-[#C8F542]" />
               {dispute.play_timestamp}
             </span>
-            <StatusChip status={dispute.status} />
+            <StatusChip status={dispute.status as DisputeStatus} />
           </div>
         </div>
 
@@ -81,7 +81,7 @@ export const DisputeCard: React.FC<DisputeCardProps> = ({ dispute, onSelect }) =
         </p>
 
         <div className="flex items-center gap-2 pt-1">
-          <ModeBadge mode={dispute.mode} />
+          <ModeBadge mode={dispute.mode as DisputeMode} />
           <span className="text-[10px] font-mono text-[#9CA3AF] truncate">
             {dispute.evidence_url.replace(/^https?:\/\//, '').split('/')[0]}
           </span>

@@ -80,8 +80,12 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
   }
 
   const id = dispute.dispute_id;
-  const status = String(dispute.status || "").toLowerCase();
-  const mode = String(dispute.mode || "").toLowerCase();
+  const status = String(dispute.status || "").toLowerCase() as React.ComponentProps<
+    typeof StatusChip
+  >["status"];
+  const mode = String(dispute.mode || "").toLowerCase() as React.ComponentProps<
+    typeof ModeBadge
+  >["mode"];
   const isOpen = status === "open";
   const isSettled = ["resolved", "appealed", "void"].includes(status);
   const creatorTruncated = dispute.creator

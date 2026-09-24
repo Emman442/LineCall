@@ -1,6 +1,6 @@
 import React from 'react';
-import { DisputeMode } from '../../types/dispute';
 import { Binary, FileText } from 'lucide-react';
+import { DisputeMode } from '@/lib/contracts/types';
 
 interface ModeBadgeProps {
   mode: DisputeMode;
@@ -8,7 +8,7 @@ interface ModeBadgeProps {
 }
 
 export const ModeBadge: React.FC<ModeBadgeProps> = ({ mode, showIcon = true }) => {
-  if (mode === 'DATA') {
+  if (mode === 'data') {
     return (
       <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border border-[#0052FF]/40 bg-[#0052FF]/10 text-[#0052FF] font-mono text-[11px] font-semibold tracking-wider">
         {showIcon && <Binary className="w-3 h-3 text-[#0052FF]" />}
