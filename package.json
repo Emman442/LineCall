@@ -1,0 +1,16 @@
+{
+  "name": "genlayer-project",
+  "type": "module",
+  "private": true,
+  "workspaces": ["frontend"],
+  "scripts": {
+    "dev": "cd linecall-fe && npm run dev",
+    "build": "cd linecall-fe && npm run build",
+    "start": "cd linecall-fe && npm run start",
+    "lint": "cd linecall-fe && npm run lint",
+    "deploy": "genlayer deploy"
+  },
+  "devDependencies": {
+    "genlayer-js": "^1.1.8"
+  }
+}
