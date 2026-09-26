@@ -18,11 +18,7 @@ export function useLineCallContract(): LineCall | null {
     if (!contractAddress) {
       configError(
         "Setup Required",
-        "Contract address not configured. Set NEXT_PUBLIC_CONTRACT_ADDRESS in .env.",
-        {
-          label: "Setup Guide",
-          onClick: () => window.open("/docs/setup", "_blank"),
-        }
+        "Contract address not configured. Set VITE_CONTRACT_ADDRESS in your .env file."
       );
       return null;
     }
@@ -32,7 +28,6 @@ export function useLineCallContract(): LineCall | null {
 
 export function useDisputes() {
   const contract = useLineCallContract();
-
   return useQuery<Dispute[], Error>({
     queryKey: ["disputes"],
     queryFn: () => (contract ? contract.getDisputes() : Promise.resolve([])),
@@ -44,13 +39,10 @@ export function useDisputes() {
 
 export function useDispute(disputeId: string | undefined) {
   const contract = useLineCallContract();
-
   return useQuery<Dispute | null, Error>({
     queryKey: ["dispute", disputeId],
     queryFn: () =>
-      contract && disputeId
-        ? contract.getDispute(disputeId)
-        : Promise.resolve(null),
+      contract && disputeId ? contract.getDispute(disputeId) : Promise.resolve(null),
     refetchOnWindowFocus: true,
     staleTime: 2000,
     enabled: !!contract && !!disputeId,
@@ -59,7 +51,6 @@ export function useDispute(disputeId: string | undefined) {
 
 export function useDisputeIds() {
   const contract = useLineCallContract();
-
   return useQuery<string[], Error>({
     queryKey: ["disputeIds"],
     queryFn: () => (contract ? contract.listDisputeIds() : Promise.resolve([])),
@@ -70,7 +61,6 @@ export function useDisputeIds() {
 
 export function useTotalDisputes() {
   const contract = useLineCallContract();
-
   return useQuery<number, Error>({
     queryKey: ["totalDisputes"],
     queryFn: () => (contract ? contract.getTotalDisputes() : Promise.resolve(0)),

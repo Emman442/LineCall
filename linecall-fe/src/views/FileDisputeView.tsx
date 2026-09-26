@@ -17,7 +17,6 @@ export const FileDisputeView: React.FC<FileDisputeViewProps> = ({
   const { isConnected, connectWallet, address } = useWallet();
   const { showToast } = useToast();
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [submitting, setSubmitting] = useState(false);
 
 
   const VIDEO_RE =
@@ -35,7 +34,7 @@ function isBadSource(url: string) {
 const [mode, setMode] = useState<DisputeMode>("call");
 const [comparison, setComparison] = useState<">" | ">=" | "<" | "<=" | "==">(">");
 
-const { createDisputeAsync, isCreating } = useCreateDispute();
+const { createDisputeAsync, isCreating: isSubmitting } = useCreateDispute();
 
   // Form states
   const [sport, setSport] = useState('Basketball');
@@ -126,7 +125,7 @@ const isStep2Valid =
   const isStep3Valid =
     evidenceUrl.trim().length >= 8 && evidenceUrl.startsWith('http');
 
-  const handleSubmit = async () => {
+  const handleSubmit = async() => {
   if (!isStep1Valid || !isStep2Valid || !isStep3Valid) {
     showToast("error", "Incomplete Form", "Review required fields.");
     return;
@@ -148,7 +147,6 @@ const isStep2Valid =
     return;
   }
 
-  setSubmitting(true);
   try {
     const input: CreateDisputeInput = {
       sport: sport.trim(),
@@ -166,13 +164,13 @@ const isStep2Valid =
       target_value: mode === "data" ? targetValue.trim() : "",
     };
 
+    console.log(input)
     await createDisputeAsync({ input });
     showToast("success", "Dispute Published", "Claim and rule are locked.");
     onNavigate("/disputes");
   } catch (err: any) {
     showToast("error", "Publication Failed", err?.message || "Transaction failed");
   } finally {
-    setSubmitting(false);
   }
 };
 
@@ -585,18 +583,17 @@ const isStep2Valid =
 
               <button
                 type="button"
-                disabled={!isStep3Valid || submitting}
+                disabled={!isStep3Valid || isSubmitting}
                 onClick={handleSubmit}
                 className="inline-flex items-center gap-2 px-6 py-2.5 rounded bg-[#0052FF] hover:bg-[#0047E0] disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-mono font-black uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(0,82,255,0.4)] cursor-pointer border border-[#0052FF]"
               >
-                {submitting ? (
+                {isSubmitting ? (
                   <>
                     <span className="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                     <span>FREEZING & PUBLISHING...</span>
                   </>
                 ) : (
                   <>
-                    <CheckCircle2 className="w-4 h-4 text-[#C8F542]" />
                     <span>PUBLISH DISPUTE</span>
                   </>
                 )}

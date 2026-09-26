@@ -1,5 +1,5 @@
 import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { studioDevnet } from "genlayer-js/chains";
 import type {
   CreateDisputeInput,
   Dispute,
@@ -72,7 +72,7 @@ class LineCall {
     this.contractAddress = contractAddress as `0x${string}`;
     this.studioUrl = studioUrl;
 
-    const config: any = { chain: studionet };
+    const config: any = { chain: studioDevnet };
     if (address) config.account = address as `0x${string}`;
     if (studioUrl) config.endpoint = studioUrl;
     this.client = createClient(config);
@@ -80,32 +80,29 @@ class LineCall {
 
   updateAccount(address: string): void {
     const config: any = {
-      chain: studionet,
+      chain: studioDevnet,
       account: address as `0x${string}`,
     };
     if (this.studioUrl) config.endpoint = this.studioUrl;
     this.client = createClient(config);
   }
 
-  private async wait(hash: string, retries = 24) {
-    if (typeof this.client.waitForTransactionReceipt !== "function") {
-      return { hash };
-    }
-    try {
-      return await this.client.waitForTransactionReceipt({
-        hash,
-        waitUntil: "decided",
-        retries,
-        interval: 5000,
-      });
-    } catch {
-      return await this.client.waitForTransactionReceipt({
-        hash,
-        status: "ACCEPTED",
-        retries,
-        interval: 5000,
-      });
-    }
+  private createArgs(input: CreateDisputeInput) {
+    return [
+      input.sport,
+      input.league,
+      input.event_name,
+      input.play_timestamp,
+      input.claim,
+      input.rule_text,
+      input.mode,
+      input.evidence_url,
+      input.evidence_url_fallback ?? "",
+      input.stats_url ?? "",
+      input.json_field_path ?? "",
+      input.comparison ?? "",
+      input.target_value ?? "",
+    ];
   }
 
   async getDisputes(): Promise<Dispute[]> {
@@ -215,7 +212,13 @@ class LineCall {
       value: BigInt(0),
       ...(fees ? { fees } : {}),
     });
-    return (await this.wait(txHash, 24)) as TransactionReceipt;
+    const receipt = await this.client.waitForTransactionReceipt({
+      hash: txHash,
+      status: "ACCEPTED" as any,
+      retries: 24,
+      interval: 5000,
+    });
+    return receipt as TransactionReceipt;
   }
 
   async resolve(
@@ -232,7 +235,13 @@ class LineCall {
       value: BigInt(0),
       ...(fees ? { fees } : {}),
     });
-    return (await this.wait(txHash, 48)) as TransactionReceipt;
+    const receipt = await this.client.waitForTransactionReceipt({
+      hash: txHash,
+      status: "ACCEPTED" as any,
+      retries: 48,
+      interval: 5000,
+    });
+    return receipt as TransactionReceipt;
   }
 
   async appeal(
@@ -250,25 +259,13 @@ class LineCall {
       value: BigInt(0),
       ...(fees ? { fees } : {}),
     });
-    return (await this.wait(txHash, 48)) as TransactionReceipt;
-  }
-
-  private createArgs(input: CreateDisputeInput) {
-    return [
-      input.sport,
-      input.league,
-      input.event_name,
-      input.play_timestamp,
-      input.claim,
-      input.rule_text,
-      input.mode,
-      input.evidence_url,
-      input.evidence_url_fallback ?? "",
-      input.stats_url ?? "",
-      input.json_field_path ?? "",
-      input.comparison ?? "",
-      input.target_value ?? "",
-    ];
+    const receipt = await this.client.waitForTransactionReceipt({
+      hash: txHash,
+      status: "ACCEPTED" as any,
+      retries: 48,
+      interval: 5000,
+    });
+    return receipt as TransactionReceipt;
   }
 }
 
