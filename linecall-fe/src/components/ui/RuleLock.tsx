@@ -35,7 +35,7 @@ export const RuleLock: React.FC<RuleLockProps> = ({ ruleText, ruleHash }) => {
           </span>
         </div>
 
-        <button
+        {/* <button
           onClick={handleCopyHash}
           title="Copy Rule Invariant Hash"
           className="flex items-center gap-1 text-[10px] text-[#9CA3AF] hover:text-white transition-colors cursor-pointer"
@@ -43,7 +43,7 @@ export const RuleLock: React.FC<RuleLockProps> = ({ ruleText, ruleHash }) => {
           {copied ? <Check className="w-3 h-3 text-[#22C55E]" /> : <Copy className="w-3 h-3" />}
           <span className="hidden sm:inline">INVARIANT HASH:</span>
           <span className="text-[#C8F542]">{ruleHash.slice(0, 8)}...{ruleHash.slice(-6)}</span>
-        </button>
+        </button> */}
       </div>
 
       {/* Official Rule text box */}

@@ -10,7 +10,6 @@ import {
   Copy,
   Check,
   ExternalLink,
-  Cpu,
   Clock,
   User,
   Video,
@@ -19,7 +18,7 @@ import {
   HelpCircle,
   Radio,
 } from "lucide-react";
-import { useDispute } from "@/lib/hooks/useLineCall";
+import { useDispute, useResolveDispute } from "@/lib/hooks/useLineCall";
 
 interface CaseFileViewProps {
   disputeId: string;
@@ -38,7 +37,7 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const { showToast } = useToast();
   const { data: dispute, isPending, isError } = useDispute(disputeId);
-
+  const { isResolving, resolveDisputeAsync } = useResolveDispute()
   const copyDisputeId = () => {
     if (!dispute?.dispute_id) return;
     navigator.clipboard.writeText(dispute.dispute_id);
@@ -93,15 +92,25 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
     : "—";
   const resolvedDate = dispute.resolved_at
     ? new Date(dispute.resolved_at).toLocaleString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        timeZoneName: "short",
-      })
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      timeZoneName: "short",
+    })
     : null;
+
+  const handleResolution = async () => {
+    await resolveDisputeAsync(disputeId, {
+      onSuccess: () => {
+        showToast("success", "Resolution successful")
+      }, onError: () => {
+        showToast("error", "Failed to resolve. please try again.")
+      }
+    })
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
@@ -212,9 +221,8 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
             <div className="bg-[#121824] px-4 py-2 border-b border-[#1E242E] flex items-center justify-between font-mono text-xs">
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    isOpen ? "bg-[#E11D48] animate-pulse" : "bg-[#22C55E]"
-                  }`}
+                  className={`w-2.5 h-2.5 rounded-full ${isOpen ? "bg-[#E11D48] animate-pulse" : "bg-[#22C55E]"
+                    }`}
                 />
                 <span className="font-extrabold text-white tracking-wider uppercase">
                   VAR BENCH
@@ -240,11 +248,12 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
                   </div>
 
                   <button
-                    onClick={() => onNavigate(`/disputes/${id}/resolve`)}
+                    // onClick={() => onNavigate(`/disputes/${id}/resolve`)}
+                    onClick={handleResolution}
+                    disabled={isResolving}
                     className="w-full py-3.5 px-4 rounded bg-[#0052FF] hover:bg-[#0047E0] text-white text-xs font-mono font-black uppercase tracking-wider flex items-center justify-center gap-2"
                   >
-                    <Cpu className="w-4 h-4 text-[#C8F542]" />
-                    RUN GENLAYER RESOLUTION
+                    {isResolving ? "RESOLVING...." : "RUN GENLAYER RESOLUTION"}
                   </button>
                 </div>
               )}

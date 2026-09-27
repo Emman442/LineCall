@@ -20,21 +20,21 @@ export const FileDisputeView: React.FC<FileDisputeViewProps> = ({
 
 
   const VIDEO_RE =
-  /\.(mp4|webm|mov|m3u8)(\?|$)/i;
-const VIDEO_HOST =
-  /youtube\.com|youtu\.be|vimeo\.com|twitch\.tv/i;
+    /\.(mp4|webm|mov|m3u8)(\?|$)/i;
+  const VIDEO_HOST =
+    /youtube\.com|youtu\.be|vimeo\.com|twitch\.tv/i;
 
-function isBadSource(url: string) {
-  const u = url.trim();
-  if (!u) return false;
-  return VIDEO_RE.test(u) || VIDEO_HOST.test(u);
-}
+  function isBadSource(url: string) {
+    const u = url.trim();
+    if (!u) return false;
+    return VIDEO_RE.test(u) || VIDEO_HOST.test(u);
+  }
 
-// mode state
-const [mode, setMode] = useState<DisputeMode>("call");
-const [comparison, setComparison] = useState<">" | ">=" | "<" | "<=" | "==">(">");
+  // mode state
+  const [mode, setMode] = useState<DisputeMode>("call");
+  const [comparison, setComparison] = useState<">" | ">=" | "<" | "<=" | "==">(">");
 
-const { createDisputeAsync, isCreating: isSubmitting } = useCreateDispute();
+  const { createDisputeAsync, isCreating: isSubmitting } = useCreateDispute();
 
   // Form states
   const [sport, setSport] = useState('Basketball');
@@ -117,62 +117,68 @@ const { createDisputeAsync, isCreating: isSubmitting } = useCreateDispute();
     playTimestamp.trim().length > 0 &&
     claim.trim().length >= 10;
 
-const isStep2Valid =
-  ruleText.trim().length >= 20 &&
-  (mode === "call" ||
-    (jsonFieldPath.trim().length > 0 && targetValue.trim().length > 0));
+  const isStep2Valid =
+    ruleText.trim().length >= 20 &&
+    (mode === "call" ||
+      (jsonFieldPath.trim().length > 0 && targetValue.trim().length > 0));
 
   const isStep3Valid =
     evidenceUrl.trim().length >= 8 && evidenceUrl.startsWith('http');
 
-  const handleSubmit = async() => {
-  if (!isStep1Valid || !isStep2Valid || !isStep3Valid) {
-    showToast("error", "Incomplete Form", "Review required fields.");
-    return;
-  }
-  if (!isConnected) {
-    connectWallet();
-    return;
-  }
-  if (
-    isBadSource(evidenceUrl) ||
-    isBadSource(fallbackUrl) ||
-    isBadSource(statsUrl)
-  ) {
-    showToast(
-      "error",
-      "Video URL blocked",
-      "Use public HTML recap or JSON. GenLayer cannot watch video."
-    );
-    return;
-  }
+  const handleSubmit = async () => {
+    if (!isStep1Valid || !isStep2Valid || !isStep3Valid) {
+      showToast("error", "Incomplete Form", "Review required fields.");
+      return;
+    }
+    if (!isConnected) {
+      connectWallet();
+      return;
+    }
+    if (
+      isBadSource(evidenceUrl) ||
+      isBadSource(fallbackUrl) ||
+      isBadSource(statsUrl)
+    ) {
+      showToast(
+        "error",
+        "Video URL blocked",
+        "Use public HTML recap or JSON. GenLayer cannot watch video."
+      );
+      return;
+    }
 
-  try {
-    const input: CreateDisputeInput = {
-      sport: sport.trim(),
-      league: league.trim(),
-      event_name: eventName.trim(),
-      play_timestamp: playTimestamp.trim(),
-      claim: claim.trim(),
-      rule_text: ruleText.trim(),
-      mode,
-      evidence_url: evidenceUrl.trim(),
-      evidence_url_fallback: fallbackUrl.trim() || "",
-      stats_url: statsUrl.trim() || "",
-      json_field_path: mode === "data" ? jsonFieldPath.trim() : "",
-      comparison: mode === "data" ? comparison : "",
-      target_value: mode === "data" ? targetValue.trim() : "",
-    };
+    try {
+      const input: CreateDisputeInput = {
+        sport: sport.trim(),
+        league: league.trim(),
+        event_name: eventName.trim(),
+        play_timestamp: playTimestamp.trim(),
+        claim: claim.trim(),
+        rule_text: ruleText.trim(),
+        mode,
+        evidence_url: evidenceUrl.trim(),
+        evidence_url_fallback: fallbackUrl.trim() || "",
+        stats_url: statsUrl.trim() || "",
+        json_field_path: mode === "data" ? jsonFieldPath.trim() : "",
+        comparison: mode === "data" ? comparison : "",
+        target_value: mode === "data" ? targetValue.trim() : "",
+      };
 
-    console.log(input)
-    await createDisputeAsync({ input });
-    showToast("success", "Dispute Published", "Claim and rule are locked.");
-    onNavigate("/disputes");
-  } catch (err: any) {
-    showToast("error", "Publication Failed", err?.message || "Transaction failed");
-  } finally {
-  }
-};
+      console.log(input)
+      await createDisputeAsync({ input }, {
+        onSuccess: () => {
+          showToast("success", "Dispute Published", "Claim and rule are locked.");
+          onNavigate("/disputes");
+        }, onError: (err) => {
+          showToast("error", "Publication Failed", err?.message || "Transaction failed");
+        }
+      });
+
+    } catch (err: any) {
+      showToast("error", "Publication Failed", err?.message || "Transaction failed");
+    } finally {
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-6">
@@ -232,13 +238,12 @@ const isStep2Valid =
       <div className="grid grid-cols-3 gap-2 text-xs font-mono border-b border-[#1E242E] pb-3">
         <button
           onClick={() => setStep(1)}
-          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${
-            step === 1
+          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${step === 1
               ? 'border-[#C8F542] text-[#C8F542] font-bold'
               : step > 1
-              ? 'border-[#22C55E] text-[#22C55E]'
-              : 'border-transparent text-[#9CA3AF]'
-          }`}
+                ? 'border-[#22C55E] text-[#22C55E]'
+                : 'border-transparent text-[#9CA3AF]'
+            }`}
         >
           <span className="w-5 h-5 rounded flex items-center justify-center bg-[#131923] border border-[#232B38] text-[11px]">
             {step > 1 ? '✓' : '1'}
@@ -248,13 +253,12 @@ const isStep2Valid =
 
         <button
           onClick={() => isStep1Valid && setStep(2)}
-          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${
-            step === 2
+          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${step === 2
               ? 'border-[#C8F542] text-[#C8F542] font-bold'
               : step > 2
-              ? 'border-[#22C55E] text-[#22C55E]'
-              : 'border-transparent text-[#9CA3AF]'
-          }`}
+                ? 'border-[#22C55E] text-[#22C55E]'
+                : 'border-transparent text-[#9CA3AF]'
+            }`}
         >
           <span className="w-5 h-5 rounded flex items-center justify-center bg-[#131923] border border-[#232B38] text-[11px]">
             {step > 2 ? '✓' : '2'}
@@ -264,11 +268,10 @@ const isStep2Valid =
 
         <button
           onClick={() => isStep1Valid && isStep2Valid && setStep(3)}
-          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${
-            step === 3
+          className={`flex items-center gap-2 pb-2 border-b-2 text-left transition-colors cursor-pointer ${step === 3
               ? 'border-[#C8F542] text-[#C8F542] font-bold'
               : 'border-transparent text-[#9CA3AF]'
-          }`}
+            }`}
         >
           <span className="w-5 h-5 rounded flex items-center justify-center bg-[#131923] border border-[#232B38] text-[11px]">
             3
@@ -373,11 +376,10 @@ const isStep2Valid =
                 <button
                   type="button"
                   onClick={() => setMode('call')}
-                  className={`p-3.5 rounded border text-left transition-all cursor-pointer ${
-                    mode === 'call'
+                  className={`p-3.5 rounded border text-left transition-all cursor-pointer ${mode === 'call'
                       ? 'border-[#C8F542] bg-[#C8F542]/10'
                       : 'border-[#1E242E] bg-[#07090E] hover:border-[#333E4F]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-xs font-bold text-white">CALL MODE</span>
@@ -393,11 +395,10 @@ const isStep2Valid =
                 <button
                   type="button"
                   onClick={() => setMode('data')}
-                  className={`p-3.5 rounded border text-left transition-all cursor-pointer ${
-                    mode === 'data'
+                  className={`p-3.5 rounded border text-left transition-all cursor-pointer ${mode === 'data'
                       ? 'border-[#0052FF] bg-[#0052FF]/10'
                       : 'border-[#1E242E] bg-[#07090E] hover:border-[#333E4F]'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span className="font-mono text-xs font-bold text-white">DATA MODE</span>
