@@ -36,7 +36,8 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
 }) => {
   const [copiedId, setCopiedId] = useState(false);
   const { showToast } = useToast();
-  const { data: dispute, isPending, isError } = useDispute(disputeId);
+  const { data: dispute, isPending, isError, error } = useDispute(disputeId);
+  console.log(disputeId)
   const { isResolving, resolveDisputeAsync } = useResolveDispute()
   const copyDisputeId = () => {
     if (!dispute?.dispute_id) return;
@@ -54,6 +55,7 @@ export const CaseFileView: React.FC<CaseFileViewProps> = ({
       </div>
     );
   }
+  console.log("Dispute: ", dispute)
 
   if (isError || !dispute || dispute.found === false) {
     return (
