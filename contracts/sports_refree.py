@@ -12,7 +12,7 @@ class SportsReferee(gl.contract.Contract):
     Public replay desk.
     Creates a dispute with immutable rules + public URLs,
     fetches those sources at resolve time, and writes YES / NO / VOID
-    once validators agree on the one-word verdict.
+    once validators agree on the verdict.
     """
 
     admin: str
@@ -32,7 +32,7 @@ class SportsReferee(gl.contract.Contract):
             return {}
 
     def _save(self, data: dict) -> None:
-        self.disputes_json = json.dumps(data)
+        self.disputes_json = json.dumps(data, sort_keys=True)
 
     def _empty(self) -> dict:
         return {
@@ -82,22 +82,46 @@ class SportsReferee(gl.contract.Contract):
         for part in path.split("."):
             if isinstance(node, dict) and part in node:
                 node = node[part]
+            elif isinstance(node, list):
+                idx = int(part)
+                node = node[idx]
             else:
                 raise KeyError(part)
         return float(node)
 
+    def _get_webpage(self, url: str, mode: str):
+        """
+        Different GenVM/SDK builds expose the web-fetch call under
+        different names. Newer builds moved nondeterministic ops
+        under gl.nondet.*, so gl.get_webpage became
+        gl.nondet.web.render. Try both instead of hardcoding one and
+        silently failing on whichever build doesn't have it.
+        """
+        if hasattr(gl, "nondet") and hasattr(gl.nondet, "web") and hasattr(gl.nondet.web, "render"):
+            return gl.nondet.web.render(url, mode=mode)
+        if hasattr(gl, "get_webpage"):
+            return gl.get_webpage(url, mode=mode)
+        raise AttributeError("no web fetch function found on gl or gl.nondet.web")
+
+    def _run_prompt(self, prompt: str) -> str:
+        """
+        Same story as _get_webpage. Some builds expose exec_prompt
+        directly on gl, newer ones moved it to gl.nondet.exec_prompt.
+        """
+        if hasattr(gl, "nondet") and hasattr(gl.nondet, "exec_prompt"):
+            return gl.nondet.exec_prompt(prompt)
+        if hasattr(gl, "exec_prompt"):
+            return gl.exec_prompt(prompt)
+        raise AttributeError("no exec_prompt function found on gl or gl.nondet")
+
     def _fetch_text(self, url: str) -> str:
+        if not url or not url.startswith("http"):
+            return ""
         try:
-            return gl.nondet.web.render(url, mode="text")[:4000]
+            page_content = self._get_webpage(url, "text")
+            return str(page_content)[:4000]
         except Exception:
-            try:
-                res = gl.nondet.web.get(url)
-                body = res.body
-                if isinstance(body, bytes):
-                    return body.decode("utf-8", errors="ignore")[:4000]
-                return str(body)[:4000]
-            except Exception:
-                return ""
+            return ""
 
     @gl.public.write
     def create_dispute(
@@ -116,14 +140,6 @@ class SportsReferee(gl.contract.Contract):
         comparison: str,
         target_value: str,
     ) -> str:
-        """
-        mode:
-          "data" — numeric / JSON field vs target (buzzer, score, clock)
-          "call" — judgment from public page text (foul, offside, catch)
-
-        claim must be a yes/no proposition, e.g.
-        "The last Lakers field goal beat the buzzer."
-        """
         if len(sport.strip()) < 2:
             raise gl.vm.UserError("sport required")
         if len(event_name.strip()) < 4:
@@ -131,7 +147,7 @@ class SportsReferee(gl.contract.Contract):
         if len(claim.strip()) < 12:
             raise gl.vm.UserError("claim too short")
         if len(rule_text.strip()) < 20:
-            raise gl.vm.UserError("rule_text too short — lock the standard now")
+            raise gl.vm.UserError("rule_text too short, lock the standard now")
         if mode not in ["data", "call"]:
             raise gl.vm.UserError("mode must be data or call")
 
@@ -248,13 +264,19 @@ class SportsReferee(gl.contract.Contract):
                     urls.append(stats_url)
 
                 chunks = []
+                fetch_report = []
                 for url in urls:
                     txt = self._fetch_text(url)
+                    fetch_report.append(url + "=" + ("FETCHED" if len(txt) > 20 else "EMPTY"))
                     if txt:
                         chunks.append("SOURCE " + url + ":\n" + txt)
 
                 if len(chunks) == 0:
-                    return "VOID"
+                    return json.dumps(
+                        {"verdict": "VOID", "report": " | ".join(fetch_report)},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
 
                 evidence = "\n\n".join(chunks)[:6000]
                 prompt = f"""You are an independent sports replay official.
@@ -274,36 +296,37 @@ Public evidence text:
 
 Decide only from the evidence and the written rule.
 Reply with ONE word:
-YES — the claim is clearly supported
-NO — the claim is clearly false
-VOID — wrong clip, missing angle, paywalled, or too ambiguous
+YES, the claim is clearly supported
+NO, the claim is clearly false
+VOID, wrong clip, missing angle, paywalled, or too ambiguous
 
 No other words.
 """
-                raw = gl.nondet.exec_prompt(prompt).strip().upper()
+                raw = self._run_prompt(prompt).strip().upper()
                 if raw.startswith("YES"):
-                    return "YES"
-                if raw.startswith("NO"):
-                    return "NO"
-                return "VOID"
+                    verdict_word = "YES"
+                elif raw.startswith("NO"):
+                    verdict_word = "NO"
+                else:
+                    verdict_word = "VOID"
+                return json.dumps(
+                    {"verdict": verdict_word, "report": " | ".join(fetch_report)},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
 
-            verdict = gl.eq_principle.strict_eq(evaluate_call)
+            packed_call = json.loads(gl.eq_principle.strict_eq(evaluate_call))
+            verdict = str(packed_call.get("verdict", "VOID"))
             if verdict not in ["YES", "NO", "VOID"]:
                 verdict = "VOID"
-            observed = ""
+            observed = str(packed_call.get("report", ""))
 
         if verdict == "YES":
-            reasoning = (
-                "YES: public sources were judged to support the claim under the locked rule text."
-            )
+            reasoning = "YES, public sources were judged to support the claim under the locked rule text."
         elif verdict == "NO":
-            reasoning = (
-                "NO: public sources were judged not to support the claim under the locked rule text."
-            )
+            reasoning = "NO, public sources were judged not to support the claim under the locked rule text."
         else:
-            reasoning = (
-                "VOID: evidence was missing, unreadable, or too ambiguous to settle the claim."
-            )
+            reasoning = "VOID, evidence was missing, unreadable, or too ambiguous to settle the claim."
         if observed:
             reasoning = reasoning + " Observed=" + observed + "."
 
@@ -372,7 +395,7 @@ Evidence:
 
 Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
 """
-            raw = gl.nondet.exec_prompt(prompt).strip().upper()
+            raw = self._run_prompt(prompt).strip().upper()
             if raw.startswith("YES"):
                 return "YES"
             if raw.startswith("NO"):
@@ -384,11 +407,11 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
             verdict = "VOID"
 
         if verdict == "YES":
-            reasoning = "APPEAL YES: claim stands after re-review."
+            reasoning = "APPEAL YES, claim stands after re-review."
         elif verdict == "NO":
-            reasoning = "APPEAL NO: claim does not stand after re-review."
+            reasoning = "APPEAL NO, claim does not stand after re-review."
         else:
-            reasoning = "APPEAL VOID: still unresolvable after re-review."
+            reasoning = "APPEAL VOID, still unresolvable after re-review."
         reasoning = reasoning + " Original was " + original + "."
 
         row["appeal_used"] = True
@@ -400,31 +423,75 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
         data[dispute_id] = row
         self._save(data)
 
+    @gl.public.write
+    def debug_fetch(self, url: str, mode: str) -> str:
+        """
+        Test-only helper. Tries _get_webpage's adaptive lookup first.
+        If that still fails, dumps the real attribute names available
+        on gl and gl.nondet so we can see exactly what this SDK build
+        actually calls its web-fetch function, instead of guessing
+        again.
+        """
+        def do_fetch() -> str:
+            try:
+                content = self._get_webpage(url, mode)
+                content_str = str(content)
+                length_bucket = (len(content_str) // 500) * 500
+                status = "FETCH_OK" if len(content_str) > 20 else "FETCH_EMPTY"
+                return status + " approx_len=" + str(length_bucket)
+            except Exception as e:
+                gl_attrs = ",".join(sorted(a for a in dir(gl) if not a.startswith("_")))
+                nondet_attrs = ""
+                if hasattr(gl, "nondet"):
+                    nondet_attrs = ",".join(sorted(a for a in dir(gl.nondet) if not a.startswith("_")))
+                return (
+                    "ERROR " + type(e).__name__ + ": " + str(e)[:200]
+                    + " | gl_attrs=" + gl_attrs[:400]
+                    + " | nondet_attrs=" + nondet_attrs[:400]
+                )
+
+        return gl.eq_principle.strict_eq(do_fetch)
+
     @gl.public.view
-    def get_dispute(self, dispute_id: str) -> dict[str, typing.Any]:
-        data = self._load()
-        if dispute_id not in data:
-            return {"dispute_id": dispute_id, "found": False}
-        row = data[dispute_id]
-        row["dispute_id"] = dispute_id
-        row["found"] = True
-        row["admin"] = self.admin
-        return row
+    def debug_eq_principle_options(self) -> str:
+        """
+        Lists what's actually available on gl.eq_principle in this
+        SDK build. strict_eq requires byte-identical output across
+        every validator, which live scraped web content will
+        sometimes fail even when the underlying facts agree. If that
+        starts happening on real disputes, this tells us whether a
+        more tolerant comparison method exists here before we guess
+        at a name.
+        """
+        return ",".join(sorted(a for a in dir(gl.eq_principle) if not a.startswith("_")))
 
     @gl.public.view
     def get_all_disputes(self) -> list:
         data = self._load()
         result = []
-        for dispute_id in data.keys():
+        for dispute_id in sorted(data.keys()):
             row = data[dispute_id]
             row["dispute_id"] = dispute_id
             row["found"] = True
             result.append(row)
         return result
+        
+    @gl.public.view
+    def get_dispute(self, dispute_id: str) -> dict:
+        data = self._load()
+        if dispute_id not in data:
+            row = self._empty()
+            row["dispute_id"] = dispute_id
+            row["found"] = False
+            return row
+        row = data[dispute_id]
+        row["dispute_id"] = dispute_id
+        row["found"] = True
+        return row
 
     @gl.public.view
     def list_dispute_ids(self) -> list:
-        return list(self._load().keys())
+        return sorted(list(self._load().keys()))
 
     @gl.public.view
     def get_admin(self) -> str:
