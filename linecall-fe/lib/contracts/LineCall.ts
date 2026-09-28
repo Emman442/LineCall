@@ -73,7 +73,7 @@ class LineCall {
     this.studioUrl = studioUrl;
 
     const config: any = { chain: studioDevnet };
-    if (address) config.account = address as `0x${string}`;
+if (address) config.account = address as `0x${string}`;
     if (studioUrl) config.endpoint = studioUrl;
     this.client = createClient(config);
   }

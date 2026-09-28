@@ -65,25 +65,25 @@ export const ResolveConfirmView: React.FC<ResolveConfirmViewProps> = ({
     );
   }
 
-  if (dispute.status !== 'OPEN') {
-    return (
-      <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4">
-        <div className="w-12 h-12 rounded bg-[#22C55E]/10 border border-[#22C55E]/30 flex items-center justify-center mx-auto text-[#22C55E]">
-          <CheckCircle2 className="w-6 h-6" />
-        </div>
-        <h2 className="text-lg font-bold text-white font-mono">Docket Already Settled</h2>
-        <p className="text-xs text-[#9CA3AF]">
-          This dispute docket has already been evaluated and its verdict is recorded on-chain.
-        </p>
-        <button
-          onClick={() => onNavigate(`/disputes/${dispute.dispute_id}`)}
-          className="px-4 py-2 rounded bg-[#0052FF] text-white text-xs font-mono font-bold uppercase cursor-pointer"
-        >
-          VIEW CASE FILE
-        </button>
+  if (dispute.status.toLowerCase() !== 'open') {
+  return (
+    <div className="max-w-md mx-auto px-4 py-24 text-center space-y-4">
+      <div className="w-12 h-12 rounded bg-[#22C55E]/10 border border-[#22C55E]/30 flex items-center justify-center mx-auto text-[#22C55E]">
+        <CheckCircle2 className="w-6 h-6" />
       </div>
-    );
-  }
+      <h2 className="text-lg font-bold text-white font-mono">Docket Already Settled</h2>
+      <p className="text-xs text-[#9CA3AF]">
+        This dispute docket has already been evaluated and its verdict is recorded on-chain.
+      </p>
+      <button
+        onClick={() => onNavigate(`/disputes/${dispute.dispute_id}`)}
+        className="px-4 py-2 rounded bg-[#0052FF] text-white text-xs font-mono font-bold uppercase cursor-pointer"
+      >
+        VIEW CASE FILE
+      </button>
+    </div>
+  );
+}
 
   return (
     <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-6">

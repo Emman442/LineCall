@@ -344,10 +344,13 @@ No other words.
         One appeal per dispute. Re-runs the same sources plus the
         appellant's note. Verdict is still one word under strict_eq.
         """
+        caller = str(gl.message.sender_address)
         data = self._load()
         if dispute_id not in data:
             raise gl.vm.UserError("unknown dispute_id")
         row = data[dispute_id]
+        if caller != row["creator"] and caller != self.admin:
+            raise gl.vm.UserError("Only the dispute creator or admin can appeal")
         if row.get("status") not in ["resolved", "void"]:
             raise gl.vm.UserError("nothing to appeal")
         if row.get("appeal_used") is True:
@@ -466,17 +469,6 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
         return ",".join(sorted(a for a in dir(gl.eq_principle) if not a.startswith("_")))
 
     @gl.public.view
-    def get_all_disputes(self) -> list:
-        data = self._load()
-        result = []
-        for dispute_id in sorted(data.keys()):
-            row = data[dispute_id]
-            row["dispute_id"] = dispute_id
-            row["found"] = True
-            result.append(row)
-        return result
-        
-    @gl.public.view
     def get_dispute(self, dispute_id: str) -> dict:
         data = self._load()
         if dispute_id not in data:
@@ -490,6 +482,17 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
         return row
 
     @gl.public.view
+    def get_all_disputes(self) -> list:
+        data = self._load()
+        result = []
+        for dispute_id in sorted(data.keys()):
+            row = data[dispute_id]
+            row["dispute_id"] = dispute_id
+            row["found"] = True
+            result.append(row)
+        return result
+
+    @gl.public.view
     def list_dispute_ids(self) -> list:
         return sorted(list(self._load().keys()))
 
@@ -499,4 +502,4 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
 
     @gl.public.view
     def get_total_disputes(self) -> u256:
-        return self.dispute_counter
+        return self.dispute_countercl

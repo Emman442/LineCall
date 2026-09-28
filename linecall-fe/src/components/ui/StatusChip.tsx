@@ -8,25 +8,25 @@ interface StatusChipProps {
 export const StatusChip: React.FC<StatusChipProps> = ({ status }) => {
   const styles: Record<DisputeStatus, { label: string; dot: string; text: string; border: string }> = {
     open: {
-      label: 'OPEN',
+      label: 'open',
       dot: 'bg-[#0052FF]',
       text: 'text-[#D1D5DB]',
       border: 'border-[#24282D]',
     },
     resolved: {
-      label: 'RESOLVED',
+      label: 'resolved',
       dot: 'bg-[#10B981]',
       text: 'text-[#10B981]',
       border: 'border-[#10B981]/30',
     },
     appealed: {
-      label: 'APPEALED',
+      label: 'appealed',
       dot: 'bg-[#A78BFA]',
       text: 'text-[#A78BFA]',
       border: 'border-[#A78BFA]/30',
     },
     void: {
-      label: 'VOID',
+      label: 'void',
       dot: 'bg-[#F59E0B]',
       text: 'text-[#F59E0B]',
       border: 'border-[#F59E0B]/30',
