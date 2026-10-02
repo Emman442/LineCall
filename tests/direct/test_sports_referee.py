@@ -1,0 +1,545 @@
+from pathlib import Path
+
+import pytest
+from gltest.direct import create_address
+
+
+CONTRACT = Path(__file__).resolve().parents[2] / "contracts" / "sports_referee.py"
+
+CREATE_FIELDS = (
+    "sport",
+    "league",
+    "event_name",
+    "play_timestamp",
+    "claim",
+    "rule_text",
+    "mode",
+    "evidence_url",
+    "evidence_url_fallback",
+    "stats_url",
+    "json_field_path",
+    "comparison",
+    "target_value",
+)
+
+
+def call_params(**overrides: str) -> dict[str, str]:
+    params = {
+        "sport": "Basketball",
+        "league": "NBA",
+        "event_name": "Warriors vs Celtics",
+        "play_timestamp": "2026-10-02 Q4 02:14",
+        "claim": "The defender had not established legal guarding position",
+        "rule_text": (
+            "A blocking foul applies when the defender has not established "
+            "legal guarding position before contact."
+        ),
+        "mode": "call",
+        "evidence_url": "https://evidence.example/replay",
+        "evidence_url_fallback": "",
+        "stats_url": "",
+        "json_field_path": "",
+        "comparison": "",
+        "target_value": "",
+    }
+    params.update(overrides)
+    return params
+
+
+def data_params(**overrides: str) -> dict[str, str]:
+    params = {
+        "sport": "Basketball",
+        "league": "NBA",
+        "event_name": "Warriors vs Celtics",
+        "play_timestamp": "2026-10-02 Q4 02:14",
+        "claim": "The official recorded score is at least three points",
+        "rule_text": (
+            "The claim is true when the selected official numeric field is "
+            "greater than or equal to three."
+        ),
+        "mode": "data",
+        "evidence_url": "https://data.example/game",
+        "evidence_url_fallback": "",
+        "stats_url": "",
+        "json_field_path": "score",
+        "comparison": ">=",
+        "target_value": "3",
+    }
+    params.update(overrides)
+    return params
+
+
+def create_dispute(contract, params: dict[str, str]) -> str:
+    # Keep this explicit so a signature change is caught by the suite instead
+    # of being silently hidden behind **params.
+    return contract.create_dispute(*(params[field] for field in CREATE_FIELDS))
+
+
+def mock_call_evidence(direct_vm, body: str | None = None) -> None:
+    direct_vm.mock_web(
+        r"evidence\.example/replay",
+        {
+            "status": 200,
+            "body": body
+            or (
+                "Official replay text: the defender was still moving laterally "
+                "when contact occurred and legal guarding position was not set."
+            ),
+        },
+    )
+
+
+def resolve_call(contract, direct_vm, verdict: str = "YES") -> str:
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"independent sports replay official", verdict)
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+    return dispute_id
+
+
+def test_initial_state_and_admin(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    assert int(contract.get_total_disputes()) == 0
+    assert contract.list_dispute_ids() == []
+    assert contract.get_all_disputes() == []
+    assert contract.get_admin() == str(direct_vm.sender)
+
+
+def test_create_call_dispute_persists_trimmed_immutable_inputs(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.warp("2026-10-02T10:00:00Z")
+
+    params = call_params(
+        sport="  Basketball  ",
+        league="  NBA  ",
+        event_name="  Warriors vs Celtics  ",
+        play_timestamp="  2026-10-02 Q4 02:14  ",
+        claim="  The defender had not established legal guarding position  ",
+        rule_text=(
+            "  A blocking foul applies when the defender has not established "
+            "legal guarding position before contact.  "
+        ),
+    )
+
+    dispute_id = create_dispute(contract, params)
+    row = contract.get_dispute(dispute_id)
+
+    assert dispute_id == "dispute_1"
+    assert row["found"] is True
+    assert row["dispute_id"] == "dispute_1"
+    assert row["sport"] == "Basketball"
+    assert row["league"] == "NBA"
+    assert row["event_name"] == "Warriors vs Celtics"
+    assert row["play_timestamp"] == "2026-10-02 Q4 02:14"
+    assert row["claim"] == "The defender had not established legal guarding position"
+    assert row["mode"] == "call"
+    assert row["status"] == "open"
+    assert row["verdict"] == ""
+    assert row["created_at"] == "2026-10-02T10:00:00Z"
+    assert int(contract.get_total_disputes()) == 1
+
+
+def test_sequential_dispute_ids_and_sorted_listing(direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    assert create_dispute(contract, call_params()) == "dispute_1"
+    assert create_dispute(contract, call_params(event_name="Lakers vs Suns")) == "dispute_2"
+    assert create_dispute(contract, call_params(event_name="Heat vs Knicks")) == "dispute_3"
+
+    assert contract.list_dispute_ids() == ["dispute_1", "dispute_2", "dispute_3"]
+    assert [row["dispute_id"] for row in contract.get_all_disputes()] == [
+        "dispute_1",
+        "dispute_2",
+        "dispute_3",
+    ]
+    assert int(contract.get_total_disputes()) == 3
+
+
+def test_unknown_dispute_returns_found_false(direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    row = contract.get_dispute("dispute_999")
+
+    assert row["found"] is False
+    assert row["dispute_id"] == "dispute_999"
+    assert row["status"] == "open"
+    assert row["verdict"] == ""
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"sport": " "}, "sport required"),
+        ({"event_name": "abc"}, "event_name too short"),
+        ({"claim": "too short"}, "claim too short"),
+        ({"rule_text": "too short"}, "rule_text too short, lock the standard now"),
+        ({"mode": "manual"}, "mode must be data or call"),
+        ({"evidence_url": "ftp://example.com/replay"}, "evidence_url must be http(s)"),
+        (
+            {"evidence_url_fallback": "file://fallback"},
+            "evidence_url_fallback must be http(s)",
+        ),
+        ({"stats_url": "stats.example/game"}, "stats_url must be http(s)"),
+    ],
+)
+def test_create_dispute_rejects_invalid_common_inputs(
+    direct_vm,
+    direct_deploy,
+    overrides,
+    message,
+):
+    contract = direct_deploy(str(CONTRACT))
+
+    with direct_vm.expect_revert(message):
+        create_dispute(contract, call_params(**overrides))
+
+    assert int(contract.get_total_disputes()) == 0
+    assert contract.list_dispute_ids() == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"json_field_path": "   "}, "json_field_path required for data mode"),
+        ({"comparison": "!="}, "comparison must be > >= < <= =="),
+        ({"target_value": "three"}, "target_value must be numeric"),
+    ],
+)
+def test_create_dispute_rejects_invalid_data_mode_inputs(
+    direct_vm,
+    direct_deploy,
+    overrides,
+    message,
+):
+    contract = direct_deploy(str(CONTRACT))
+
+    with direct_vm.expect_revert(message):
+        create_dispute(contract, data_params(**overrides))
+
+    assert int(contract.get_total_disputes()) == 0
+
+
+def test_data_resolution_yes_supports_nested_dict_and_list_paths(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {
+            "status": 200,
+            "body": '{"stats":{"periods":[{"score":3.1256789}]}}',
+        },
+    )
+
+    dispute_id = create_dispute(
+        contract,
+        data_params(
+            json_field_path="stats.periods.0.score",
+            comparison=">=",
+            target_value="3",
+        ),
+    )
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["status"] == "resolved"
+    assert row["verdict"] == "YES"
+    assert row["observed_value"] == "3.125679"
+    assert row["reasoning"].startswith("YES,")
+    assert direct_vm.run_validator() is True
+
+
+def test_data_resolution_no(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": '{"score":2}'},
+    )
+
+    dispute_id = create_dispute(contract, data_params())
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["status"] == "resolved"
+    assert row["verdict"] == "NO"
+    assert row["observed_value"] == "2.0"
+    assert row["reasoning"].startswith("NO,")
+
+
+def test_data_resolution_falls_back_after_primary_parse_failure(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": "not-json"},
+    )
+    direct_vm.mock_web(
+        r"fallback\.example/game",
+        {"status": 200, "body": '{"score":4}'},
+    )
+
+    dispute_id = create_dispute(
+        contract,
+        data_params(evidence_url_fallback="https://fallback.example/game"),
+    )
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["status"] == "resolved"
+    assert row["verdict"] == "YES"
+    assert row["observed_value"] == "4.0"
+
+
+def test_data_resolution_uses_stats_url_as_third_source(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": "bad-primary"},
+    )
+    direct_vm.mock_web(
+        r"fallback\.example/game",
+        {"status": 200, "body": "bad-fallback"},
+    )
+    direct_vm.mock_web(
+        r"stats\.example/game",
+        {"status": 200, "body": '{"score":5}'},
+    )
+
+    dispute_id = create_dispute(
+        contract,
+        data_params(
+            evidence_url_fallback="https://fallback.example/game",
+            stats_url="https://stats.example/game",
+        ),
+    )
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["verdict"] == "YES"
+    assert row["observed_value"] == "5.0"
+
+
+def test_data_resolution_void_when_all_sources_are_unusable(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": "not-json"},
+    )
+
+    dispute_id = create_dispute(contract, data_params())
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["status"] == "void"
+    assert row["verdict"] == "VOID"
+    assert row["observed_value"] == "parse_or_path"
+    assert row["reasoning"].startswith("VOID,")
+
+
+def test_resolve_rejects_unknown_dispute(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    with direct_vm.expect_revert("unknown dispute_id"):
+        contract.resolve("dispute_404")
+
+
+def test_resolve_rejects_second_resolution(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": '{"score":3}'},
+    )
+
+    dispute_id = create_dispute(contract, data_params())
+    contract.resolve(dispute_id)
+
+    with direct_vm.expect_revert("dispute is not open"):
+        contract.resolve(dispute_id)
+
+
+def test_resolve_records_resolution_time(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    direct_vm.warp("2026-10-02T10:00:00Z")
+    direct_vm.mock_web(
+        r"data\.example/game",
+        {"status": 200, "body": '{"score":3}'},
+    )
+
+    dispute_id = create_dispute(contract, data_params())
+    direct_vm.warp("2026-10-02T10:05:30Z")
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["created_at"] == "2026-10-02T10:00:00Z"
+    assert row["resolved_at"] == "2026-10-02T10:05:30Z"
+
+
+@pytest.mark.parametrize(
+    ("llm_response", "expected_verdict", "expected_status"),
+    [
+        ("YES", "YES", "resolved"),
+        ("YES — supported", "YES", "resolved"),
+        ("NO", "NO", "resolved"),
+        ("NO — not supported", "NO", "resolved"),
+        ("MAYBE", "VOID", "void"),
+    ],
+)
+def test_call_resolution_normalizes_llm_output(
+    direct_vm,
+    direct_deploy,
+    llm_response,
+    expected_verdict,
+    expected_status,
+):
+    contract = direct_deploy(str(CONTRACT))
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"independent sports replay official", llm_response)
+
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["verdict"] == expected_verdict
+    assert row["status"] == expected_status
+    assert "FETCHED" in row["observed_value"]
+
+
+def test_call_resolution_void_when_no_source_can_be_fetched(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    # No web mock on purpose. _fetch_text catches the missing-web-mock error and
+    # returns an empty string, so the deterministic result must be VOID without
+    # invoking an LLM.
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["verdict"] == "VOID"
+    assert row["status"] == "void"
+    assert "EMPTY" in row["observed_value"]
+
+
+def test_appeal_rejects_unknown_dispute(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+
+    with direct_vm.expect_revert("unknown dispute_id"):
+        contract.appeal("dispute_404", "The replay should be reviewed again")
+
+
+def test_appeal_rejects_open_dispute(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    dispute_id = create_dispute(contract, call_params())
+
+    with direct_vm.expect_revert("nothing to appeal"):
+        contract.appeal(dispute_id, "The replay should be reviewed again")
+
+
+def test_appeal_rejects_unauthorized_caller(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    alice = create_address("alice")
+    bob = create_address("bob")
+
+    direct_vm.sender = alice
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"independent sports replay official", "YES")
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+
+    direct_vm.sender = bob
+    with direct_vm.expect_revert("Only the dispute creator or admin can appeal"):
+        contract.appeal(dispute_id, "The replay should be reviewed again")
+
+
+def test_appeal_requires_meaningful_context(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    dispute_id = resolve_call(contract, direct_vm, "YES")
+
+    with direct_vm.expect_revert("appeal_context too short"):
+        contract.appeal(dispute_id, "too short")
+
+
+def test_creator_can_appeal_once_and_verdict_can_change(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    alice = create_address("alice")
+    direct_vm.sender = alice
+
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"independent sports replay official", "YES")
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+    assert contract.get_dispute(dispute_id)["verdict"] == "YES"
+
+    direct_vm.clear_mocks()
+    mock_call_evidence(
+        direct_vm,
+        "Appeal replay text: a new angle shows the defender had legal guarding "
+        "position before contact and the original claim is not supported.",
+    )
+    direct_vm.mock_llm(r"reviewing an appealed sports call", "NO")
+
+    context = "The second camera angle changes the interpretation of the play."
+    contract.appeal(dispute_id, context)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["appeal_used"] is True
+    assert row["appeal_context"] == context
+    assert row["verdict"] == "NO"
+    assert row["status"] == "appealed"
+    assert "Original was YES" in row["reasoning"]
+
+    with direct_vm.expect_revert("already appealed"):
+        contract.appeal(dispute_id, "A second appeal must not be accepted")
+
+
+def test_admin_can_appeal_a_dispute_created_by_another_address(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    alice = create_address("alice")
+    admin = create_address("default_sender")
+
+    direct_vm.sender = alice
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"independent sports replay official", "NO")
+    dispute_id = create_dispute(contract, call_params())
+    contract.resolve(dispute_id)
+
+    direct_vm.clear_mocks()
+    direct_vm.sender = admin
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"reviewing an appealed sports call", "YES")
+    contract.appeal(dispute_id, "The administrator requested a review of the replay evidence")
+
+    row = contract.get_dispute(dispute_id)
+    assert row["appeal_used"] is True
+    assert row["verdict"] == "YES"
+    assert row["status"] == "appealed"
+    assert "Original was NO" in row["reasoning"]
+
+
+def test_appeal_context_is_capped_at_400_characters(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    dispute_id = resolve_call(contract, direct_vm, "YES")
+
+    direct_vm.clear_mocks()
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"reviewing an appealed sports call", "YES")
+
+    context = "x" * 450
+    contract.appeal(dispute_id, context)
+    row = contract.get_dispute(dispute_id)
+
+    assert row["appeal_context"] == "x" * 400
+    assert len(row["appeal_context"]) == 400
+
+
+def test_void_appeal_keeps_void_status(direct_vm, direct_deploy):
+    contract = direct_deploy(str(CONTRACT))
+    dispute_id = resolve_call(contract, direct_vm, "YES")
+
+    direct_vm.clear_mocks()
+    mock_call_evidence(direct_vm)
+    direct_vm.mock_llm(r"reviewing an appealed sports call", "VOID")
+    contract.appeal(dispute_id, "The evidence remains too ambiguous to settle conclusively")
+
+    row = contract.get_dispute(dispute_id)
+    assert row["appeal_used"] is True
+    assert row["verdict"] == "VOID"
+    assert row["status"] == "void"
+    assert "Original was YES" in row["reasoning"]

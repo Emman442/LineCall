@@ -1,5 +1,5 @@
-# v0.3.0
-# { "Depends": "py-genlayer:5jycge4q8k23462jtb0b9fyey1s9qz928sz2nbrd9mg4sxqg2qng" }
+#v0.2.16
+# { "Depends": "py-genlayer:1zr6nqk597d97kg0dyxg0shhrykx5v02zjgnyrajapy4wlqvfvwh" }
 
 import genlayer as gl
 from genlayer.types import *
@@ -502,4 +502,4 @@ Uphold or overturn. Reply with ONE word only: YES, NO, or VOID.
 
     @gl.public.view
     def get_total_disputes(self) -> u256:
-        return self.dispute_countercl
+        return self.dispute_counter
